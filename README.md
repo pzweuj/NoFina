@@ -1,4 +1,4 @@
-# NoFina - 金融数据采集与推送系统
+# NoFina - 金融数据推送到Notion
 
 NoFina 是一个基于 Python 的金融数据采集系统，从 Finnhub API 获取实时股票、外汇和加密货币价格数据，并推送到 Notion 数据库中。个人使用向。
 
