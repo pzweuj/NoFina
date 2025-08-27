@@ -449,24 +449,6 @@ class NotionClient:
                 "Rate": {
                     "number": forex_data.get('rate', 0)
                 },
-                "Change": {
-                    "number": forex_data.get('change', 0)
-                },
-                "Percent Change": {
-                    "number": forex_data.get('percent_change', 0)
-                },
-                "High": {
-                    "number": forex_data.get('high', 0)
-                },
-                "Low": {
-                    "number": forex_data.get('low', 0)
-                },
-                "Open": {
-                    "number": forex_data.get('open', 0)
-                },
-                "Previous Close": {
-                    "number": forex_data.get('previous_close', 0)
-                },
                 "Timestamp": {
                     "number": forex_data.get('timestamp', 0)
                 },

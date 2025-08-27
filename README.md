@@ -49,6 +49,8 @@ cp example.config.yaml config.yaml
 1. 访问 [Open Exchange Rates](https://openexchangerates.org/)
 2. 注册账户并获取免费 API 密钥
 3. 免费版本每月限制 1,000 次请求
+4. Open Exchange Rates 免费层级每小时更新一次
+5. Open Exchange Rates 免费层级只支持以美元为基础的汇率，其他货币对采取以美元为桥梁的汇率计算方式，可能不准确
 
 #### Notion API 密钥
 1. 访问 [Notion Developers](https://developers.notion.com/)
@@ -122,12 +124,6 @@ notion:
 - `Name` (文本): 货币对名称
 - `Enabled` (复选框): 是否启用监控
 - `Rate` (数字): 汇率
-- `Change` (数字): 汇率变动
-- `Percent Change` (数字): 百分比变动
-- `High` (数字): 最高汇率
-- `Low` (数字): 最低汇率
-- `Open` (数字): 开盘汇率
-- `Previous Close` (数字): 前收盘汇率
 - `Timestamp` (数字): 时间戳
 - `DateTime` (文本): 日期时间
 

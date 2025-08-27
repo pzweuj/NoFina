@@ -58,12 +58,80 @@ class ForexClient:
             return None
     
     
-    def _get_forex_rate(self, pair: str) -> Optional[Dict[str, Any]]:
+    def _get_usd_rates(self, symbols: List[str]) -> Optional[Dict[str, float]]:
         """
-        从Open Exchange Rates获取汇率
+        从OpenExchangeRates获取以USD为基础的汇率
         
         Args:
-            pair: 货币对，如 "USD/CNY"
+            symbols: 目标货币列表
+            
+        Returns:
+            汇率字典 {currency: rate}
+        """
+        try:
+            if not self.api_config.get('api_key'):
+                self.logger.error("OpenExchangeRates API密钥未配置")
+                return None
+                
+            url = f"{self.api_config['base_url']}/latest.json"
+            params = {
+                'app_id': self.api_config['api_key'],
+                'base': 'USD',
+                'symbols': ','.join(symbols)
+            }
+            
+            data = self._make_request(url, params)
+            
+            if data and 'rates' in data:
+                return data['rates']
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"获取USD汇率失败: {e}")
+            return None
+    
+    def _calculate_cross_rate(self, base: str, target: str, usd_rates: Dict[str, float]) -> Optional[float]:
+        """
+        使用USD作为桥梁货币计算交叉汇率
+        
+        Args:
+            base: 基础货币
+            target: 目标货币
+            usd_rates: USD汇率字典
+            
+        Returns:
+            交叉汇率
+        """
+        try:
+            if base == 'USD':
+                # USD/TARGET
+                return usd_rates.get(target)
+            elif target == 'USD':
+                # BASE/USD = 1 / (USD/BASE)
+                usd_base_rate = usd_rates.get(base)
+                if usd_base_rate and usd_base_rate != 0:
+                    return 1.0 / usd_base_rate
+                return None
+            else:
+                # BASE/TARGET = (USD/TARGET) / (USD/BASE)
+                usd_base_rate = usd_rates.get(base)
+                usd_target_rate = usd_rates.get(target)
+                
+                if usd_base_rate and usd_target_rate and usd_base_rate != 0:
+                    return usd_target_rate / usd_base_rate
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"计算交叉汇率失败: {e}")
+            return None
+    
+    def _get_forex_rate(self, pair: str) -> Optional[Dict[str, Any]]:
+        """
+        从Open Exchange Rates获取汇率（支持USD桥梁货币）
+        
+        Args:
+            pair: 货币对，如 "USD/CNY"、"EUR/GBP"
             
         Returns:
             汇率数据
@@ -78,32 +146,55 @@ class ForexClient:
                 return None
                 
             base, target = pair.split('/')
-            url = f"{self.api_config['base_url']}/latest.json"
-            params = {
-                'app_id': self.api_config['api_key'],
-                'base': base,
-                'symbols': target
-            }
             
-            data = self._make_request(url, params)
+            # 确定需要获取的USD汇率
+            symbols_needed = set()
+            if base != 'USD':
+                symbols_needed.add(base)
+            if target != 'USD':
+                symbols_needed.add(target)
             
-            if data and 'rates' in data and target in data['rates']:
-                rate = data['rates'][target]
+            # 如果两个货币都是USD，直接返回1
+            if base == target == 'USD':
                 return {
                     'pair': pair,
-                    'rate': rate,
+                    'rate': 1.0,
                     'change': 0,
                     'percent_change': 0,
-                    'high': rate,
-                    'low': rate,
-                    'open': rate,
-                    'previous_close': rate,
-                    'timestamp': data.get('timestamp', int(time.time())),
+                    'high': 1.0,
+                    'low': 1.0,
+                    'open': 1.0,
+                    'previous_close': 1.0,
+                    'timestamp': int(time.time()),
                     'datetime': datetime.now().isoformat(),
                     'source': 'openexchangerates.org'
                 }
             
-            return None
+            # 获取USD汇率
+            usd_rates = self._get_usd_rates(list(symbols_needed))
+            if not usd_rates:
+                self.logger.error(f"无法获取USD汇率数据")
+                return None
+            
+            # 计算目标汇率
+            rate = self._calculate_cross_rate(base, target, usd_rates)
+            if rate is None:
+                self.logger.error(f"无法计算 {pair} 的汇率")
+                return None
+            
+            return {
+                'pair': pair,
+                'rate': rate,
+                'change': 0,
+                'percent_change': 0,
+                'high': rate,
+                'low': rate,
+                'open': rate,
+                'previous_close': rate,
+                'timestamp': int(time.time()),
+                'datetime': datetime.now().isoformat(),
+                'source': 'openexchangerates.org (USD bridge)'
+            }
             
         except Exception as e:
             self.logger.error(f"Open Exchange Rates API请求失败: {e}")
@@ -234,11 +325,18 @@ if __name__ == "__main__":
     
     # 测试获取汇率
     print("\n=== 汇率测试 ===")
-    test_pairs = ["USD/CNY", "EUR/USD", "GBP/USD"]
+    test_pairs = [
+        "USD/CNY",    # USD作为基础货币
+        "EUR/USD",    # USD作为目标货币（需要倒数）
+        "GBP/USD",    # USD作为目标货币（需要倒数）
+        "EUR/GBP",    # 交叉汇率（需要USD桥梁）
+        "JPY/CNY",    # 交叉汇率（需要USD桥梁）
+        "USD/USD"     # 相同货币对
+    ]
     
     for pair in test_pairs:
         rate_data = client.get_forex_rate(pair)
         if rate_data:
-            print(f"{pair}: {rate_data['rate']} (来源: {rate_data['source']})")
+            print(f"{pair}: {rate_data['rate']:.6f} (来源: {rate_data['source']})")
         else:
             print(f"{pair}: 获取失败")
