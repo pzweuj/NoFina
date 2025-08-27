@@ -153,7 +153,7 @@ python main.py
 
 ### 定时任务 (Crontab)
 
-在 VPS 上设置定时任务，每 5 分钟运行一次：
+在 VPS 上使用crontab，按需设置定时任务：
 
 ```bash
 # 编辑 crontab
@@ -162,7 +162,7 @@ crontab -e
 # 添加以下行 (每5分钟执行一次)
 */5 * * * * python /path/to/NoFina/main.py >> /path/to/NoFina/logs/nofina_cron.log 2>&1
 
-# 在东八区美股常规交易时间每5分钟执行一次
+# **或者**在东八区美股常规交易时间每5分钟执行一次
 */5 0-5,21-23 * * 1-6 python /path/to/NoFina/main.py >> /path/to/NoFina/logs/nofina_cron.log 2>&1
 ```
 
