@@ -172,6 +172,53 @@ class NotionClient:
             self.logger.error(f"获取外汇货币对失败: {e}")
             return []
     
+    def get_forex_pairs_with_timestamps(self) -> List[Dict[str, Any]]:
+        """
+        从Notion数据库获取外汇货币对及其上次更新时间
+        
+        Returns:
+            包含货币对和上次更新时间戳的列表
+        """
+        try:
+            db_config = self.notion_config.get('databases', {}).get('forex', {})
+            database_id = db_config.get('database_id')
+            columns = db_config.get('columns', {})
+            
+            if not database_id:
+                self.logger.warning("未配置外汇配置数据库ID")
+                return []
+            
+            # 查询启用的货币对
+            filter_conditions = {
+                "property": columns.get('enabled', 'Enabled'),
+                "checkbox": {
+                    "equals": True
+                }
+            }
+            
+            pages = self.query_database(database_id, filter_conditions)
+            pairs_with_timestamps = []
+            
+            for page in pages:
+                pair = self.extract_property_value(page, columns.get('pair', 'Pair'))
+                if pair:
+                    # 获取上次更新时间戳
+                    last_update = self.extract_property_value(page, 'Timestamp')
+                    if last_update is None:
+                        last_update = 0  # 如果没有时间戳，设为0表示需要更新
+                    
+                    pairs_with_timestamps.append({
+                        'pair': pair.upper(),
+                        'last_update': int(last_update) if last_update else 0
+                    })
+            
+            self.logger.info(f"从Notion获取到 {len(pairs_with_timestamps)} 个外汇货币对及时间戳")
+            return pairs_with_timestamps
+            
+        except Exception as e:
+            self.logger.error(f"获取外汇货币对及时间戳失败: {e}")
+            return []
+    
     def get_crypto_symbols(self) -> List[Dict[str, str]]:
         """
         从Notion配置数据库获取加密货币交易对列表
@@ -216,7 +263,7 @@ class NotionClient:
             self.logger.error(f"获取加密货币交易对失败: {e}")
             return []
     
-    def find_existing_page(self, database_id: str, identifier_property: str, identifier_value: str) -> Optional[str]:
+    def find_existing_page(self, database_id: str, identifier_property: str, identifier_value: str) -> Optional[Dict[str, Any]]:
         """
         查找数据库中是否存在指定标识符的页面
         
@@ -226,7 +273,7 @@ class NotionClient:
             identifier_value: 标识符值
             
         Returns:
-            页面ID（如果存在），否则返回None
+            页面信息（如果存在），包含id和properties，否则返回None
         """
         try:
             filter_conditions = {
@@ -237,7 +284,7 @@ class NotionClient:
             }
             
             pages = self.query_database(database_id, filter_conditions)
-            return pages[0]['id'] if pages else None
+            return pages[0] if pages else None
             
         except Exception as e:
             self.logger.error(f"查找现有页面失败: {e}")
@@ -300,12 +347,12 @@ class NotionClient:
         """
         try:
             # 查找现有页面
-            existing_page_id = self.find_existing_page(database_id, identifier_property, identifier_value)
+            existing_page = self.find_existing_page(database_id, identifier_property, identifier_value)
             
-            if existing_page_id:
+            if existing_page:
                 # 更新现有页面（排除标识符属性，避免重复设置）
                 update_properties = {k: v for k, v in properties.items() if k != identifier_property}
-                success = self.update_page(existing_page_id, update_properties)
+                success = self.update_page(existing_page['id'], update_properties)
                 if success:
                     self.logger.debug(f"已更新现有页面: {identifier_value}")
                 return success

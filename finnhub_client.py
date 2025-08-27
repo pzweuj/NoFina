@@ -1,6 +1,6 @@
 """
 Finnhub API客户端模块
-用于获取股票、外汇和加密货币的实时价格数据
+用于获取股票和加密货币的实时价格数据
 """
 
 import logging
@@ -97,77 +97,6 @@ class FinnhubClient:
             self.logger.error(f"获取股票 {symbol} 报价失败: {e}")
             return None
     
-    def get_forex_rate(self, pair: str) -> Optional[Dict[str, Any]]:
-        """
-        获取外汇汇率
-        
-        Args:
-            pair: 货币对，如 "USD/CNY"
-            
-        Returns:
-            外汇汇率数据
-        """
-        try:
-            # 首先尝试使用forex/rates端点（如果可用）
-            if '/' in pair:
-                base, quote = pair.split('/')
-                # 尝试forex rates API
-                forex_data = self._make_request('forex/rates', {'base': base})
-                if forex_data and 'quote' in forex_data and quote in forex_data['quote']:
-                    rate = forex_data['quote'][quote]
-                    return {
-                        'pair': pair,
-                        'rate': rate,
-                        'change': 0,  # forex rates API不提供变化数据
-                        'percent_change': 0,
-                        'high': rate,
-                        'low': rate,
-                        'open': rate,
-                        'previous_close': rate,
-                        'timestamp': int(time.time()),
-                        'datetime': datetime.now().isoformat()
-                    }
-            
-            # 如果forex rates失败，尝试使用quote端点的不同格式
-            formats_to_try = []
-            if '/' in pair:
-                base, quote = pair.split('/')
-                formats_to_try = [
-                    f"OANDA:{base}_{quote}",
-                    f"IC MARKETS:{base}{quote}",
-                    f"FXCM:{base}{quote}",
-                    f"{base}{quote}=X",  # Yahoo Finance格式
-                    f"{base}{quote}"
-                ]
-            else:
-                formats_to_try = [pair]
-            
-            for finnhub_symbol in formats_to_try:
-                try:
-                    data = self._make_request('quote', {'symbol': finnhub_symbol})
-                    
-                    if data and 'c' in data and data['c'] is not None and data['c'] > 0:
-                        return {
-                            'pair': pair,
-                            'rate': data.get('c'),           # 当前汇率
-                            'change': data.get('d', 0),         # 汇率变动
-                            'percent_change': data.get('dp', 0), # 百分比变动
-                            'high': data.get('h', data.get('c')),           # 最高汇率
-                            'low': data.get('l', data.get('c')),            # 最低汇率
-                            'open': data.get('o', data.get('c')),           # 开盘汇率
-                            'previous_close': data.get('pc', data.get('c')), # 前收盘汇率
-                            'timestamp': int(time.time()),
-                            'datetime': datetime.now().isoformat()
-                        }
-                except Exception:
-                    continue  # 尝试下一个格式
-            
-            self.logger.warning(f"所有格式都无法获取外汇 {pair} 数据，可能需要付费API计划")
-            return None
-                
-        except Exception as e:
-            self.logger.error(f"获取外汇 {pair} 汇率失败: {e}")
-            return None
     
     def get_crypto_price(self, symbol: str, exchange: str = "BINANCE") -> Optional[Dict[str, Any]]:
         """
@@ -228,25 +157,6 @@ class FinnhubClient:
         
         return results
     
-    def get_multiple_forex(self, pairs: List[str]) -> List[Dict[str, Any]]:
-        """
-        批量获取多个外汇汇率
-        
-        Args:
-            pairs: 货币对列表
-            
-        Returns:
-            外汇汇率数据列表
-        """
-        results = []
-        for pair in pairs:
-            rate = self.get_forex_rate(pair)
-            if rate:
-                results.append(rate)
-            # 添加延迟避免API限制
-            time.sleep(0.1)
-        
-        return results
     
     def get_multiple_crypto(self, crypto_list: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         """
@@ -285,10 +195,6 @@ if __name__ == "__main__":
     stock_quote = client.get_stock_quote("AAPL")
     print(json.dumps(stock_quote, indent=2, ensure_ascii=False))
     
-    # 测试外汇
-    print("\n=== 外汇测试 ===")
-    forex_rate = client.get_forex_rate("USD/CNY")
-    print(json.dumps(forex_rate, indent=2, ensure_ascii=False))
     
     # 测试加密货币
     print("\n=== 加密货币测试 ===")

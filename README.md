@@ -43,6 +43,12 @@ cp example.config.yaml config.yaml
 1. 访问 [Finnhub.io](https://finnhub.io/)
 2. 注册账户并获取免费 API 密钥
 3. 免费版本每分钟限制 60 次请求
+4. Finnhub 免费版本不支持外汇数据
+
+#### Open Exchange Rates API 密钥 (可选)
+1. 访问 [Open Exchange Rates](https://openexchangerates.org/)
+2. 注册账户并获取免费 API 密钥
+3. 免费版本每月限制 1,000 次请求
 
 #### Notion API 密钥
 1. 访问 [Notion Developers](https://developers.notion.com/)
@@ -58,6 +64,10 @@ cp example.config.yaml config.yaml
 # Finnhub API 配置
 finnhub:
   api_key: "YOUR_FINNHUB_API_KEY_HERE"
+
+# Open Exchange Rates API 配置 (可选，用于外汇数据备用源)
+openexchangerates:
+  api_key: "YOUR_OPENEXCHANGERATES_API_KEY_HERE"
 
 # Notion API 配置
 notion:

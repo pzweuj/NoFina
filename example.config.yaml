@@ -4,6 +4,13 @@ finnhub:
   api_key: "YOUR_FINNHUB_API_KEY_HERE"  # 请替换为您的Finnhub API密钥
   base_url: "https://finnhub.io/api/v1"
 
+# 免费外汇API配置
+forex_apis:
+  # Open Exchange Rates (免费1000次/月，每小时更新)
+  open_exchange_rates:
+    api_key: "YOUR_OPEN_EXCHANGE_RATES_API_KEY"  # 必须配置
+    enabled: true
+
 # Notion API 配置
 notion:
   api_key: "YOUR_NOTION_API_KEY_HERE"  # 请替换为您的Notion集成令牌

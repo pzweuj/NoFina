@@ -15,6 +15,7 @@ import yaml
 
 from finnhub_client import FinnhubClient
 from notion_db_client import NotionClient
+from forex_client import ForexClient
 
 
 def setup_logging(config: Dict[str, Any]) -> None:
@@ -135,41 +136,46 @@ def process_stocks(finnhub_client: FinnhubClient, notion_client: NotionClient, c
     logger.info(f"股票数据处理完成，共处理 {len(stock_data)} 个股票")
 
 
-def process_forex(finnhub_client: FinnhubClient, notion_client: NotionClient, config: Dict[str, Any]) -> None:
+def process_forex(notion_client: NotionClient, config: Dict[str, Any]) -> None:
     """
-    处理外汇数据
+    处理外汇数据（支持每小时更新限制）
     
     Args:
-        finnhub_client: Finnhub客户端
         notion_client: Notion客户端
         config: 配置字典
     """
     logger = logging.getLogger(__name__)
     logger.info("开始处理外汇数据...")
     
-    # 从Notion获取外汇配置
-    forex_pairs = notion_client.get_forex_pairs()
+    # 初始化免费外汇API客户端
+    forex_client = ForexClient(config)
     
-    if not forex_pairs:
+    # 从Notion获取外汇配置及上次更新时间
+    forex_pairs_with_timestamps = notion_client.get_forex_pairs_with_timestamps()
+    
+    if not forex_pairs_with_timestamps:
         logger.warning("未找到启用的外汇配置")
         return
     
-    # 获取外汇汇率数据
+    # 获取外汇汇率数据（带时间检查）
     forex_data = []
-    for pair in forex_pairs:
-        logger.info(f"获取外汇 {pair} 的汇率数据...")
-        rate = finnhub_client.get_forex_rate(pair)
+    for item in forex_pairs_with_timestamps:
+        pair = item['pair']
+        last_update = item['last_update']
+        
+        logger.info(f"检查外汇 {pair} 的更新需求...")
+        rate = forex_client.get_forex_rate(pair, last_update)
         
         if rate:
             forex_data.append(rate)
             # 推送到Notion价格数据库
             success = notion_client.push_forex_price(rate)
             if success:
-                logger.info(f"外汇 {pair} 汇率数据已推送到Notion")
+                logger.info(f"外汇 {pair} 汇率数据已更新到Notion")
             else:
                 logger.error(f"外汇 {pair} 汇率数据推送失败")
         else:
-            logger.warning(f"未能获取外汇 {pair} 的汇率数据")
+            logger.debug(f"外汇 {pair} 跳过更新（时间间隔不足或API失败）")
         
         # 添加延迟避免API限制
         time.sleep(0.2)
@@ -273,7 +279,7 @@ def main():
         
         # 处理各类数据
         process_stocks(finnhub_client, notion_client, config)
-        process_forex(finnhub_client, notion_client, config)
+        process_forex(notion_client, config)
         process_crypto(finnhub_client, notion_client, config)
         
         logger.info("NoFina 运行完成")
