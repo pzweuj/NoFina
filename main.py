@@ -14,7 +14,7 @@ from typing import Dict, Any, List
 import yaml
 
 from finnhub_client import FinnhubClient
-from notion_client import NotionClient
+from notion_db_client import NotionClient
 
 
 def setup_logging(config: Dict[str, Any]) -> None:

@@ -108,31 +108,62 @@ class FinnhubClient:
             外汇汇率数据
         """
         try:
-            # 转换货币对格式，Finnhub使用 OANDA:USD_CNY 格式
+            # 首先尝试使用forex/rates端点（如果可用）
             if '/' in pair:
                 base, quote = pair.split('/')
-                finnhub_symbol = f"OANDA:{base}_{quote}"
-            else:
-                finnhub_symbol = pair
+                # 尝试forex rates API
+                forex_data = self._make_request('forex/rates', {'base': base})
+                if forex_data and 'quote' in forex_data and quote in forex_data['quote']:
+                    rate = forex_data['quote'][quote]
+                    return {
+                        'pair': pair,
+                        'rate': rate,
+                        'change': 0,  # forex rates API不提供变化数据
+                        'percent_change': 0,
+                        'high': rate,
+                        'low': rate,
+                        'open': rate,
+                        'previous_close': rate,
+                        'timestamp': int(time.time()),
+                        'datetime': datetime.now().isoformat()
+                    }
             
-            data = self._make_request('quote', {'symbol': finnhub_symbol})
-            
-            if data and 'c' in data:
-                return {
-                    'pair': pair,
-                    'rate': data.get('c'),           # 当前汇率
-                    'change': data.get('d'),         # 汇率变动
-                    'percent_change': data.get('dp'), # 百分比变动
-                    'high': data.get('h'),           # 最高汇率
-                    'low': data.get('l'),            # 最低汇率
-                    'open': data.get('o'),           # 开盘汇率
-                    'previous_close': data.get('pc'), # 前收盘汇率
-                    'timestamp': int(time.time()),
-                    'datetime': datetime.now().isoformat()
-                }
+            # 如果forex rates失败，尝试使用quote端点的不同格式
+            formats_to_try = []
+            if '/' in pair:
+                base, quote = pair.split('/')
+                formats_to_try = [
+                    f"OANDA:{base}_{quote}",
+                    f"IC MARKETS:{base}{quote}",
+                    f"FXCM:{base}{quote}",
+                    f"{base}{quote}=X",  # Yahoo Finance格式
+                    f"{base}{quote}"
+                ]
             else:
-                self.logger.warning(f"获取外汇 {pair} 数据失败或数据格式异常")
-                return None
+                formats_to_try = [pair]
+            
+            for finnhub_symbol in formats_to_try:
+                try:
+                    data = self._make_request('quote', {'symbol': finnhub_symbol})
+                    
+                    if data and 'c' in data and data['c'] is not None and data['c'] > 0:
+                        return {
+                            'pair': pair,
+                            'rate': data.get('c'),           # 当前汇率
+                            'change': data.get('d', 0),         # 汇率变动
+                            'percent_change': data.get('dp', 0), # 百分比变动
+                            'high': data.get('h', data.get('c')),           # 最高汇率
+                            'low': data.get('l', data.get('c')),            # 最低汇率
+                            'open': data.get('o', data.get('c')),           # 开盘汇率
+                            'previous_close': data.get('pc', data.get('c')), # 前收盘汇率
+                            'timestamp': int(time.time()),
+                            'datetime': datetime.now().isoformat()
+                        }
+                except Exception:
+                    continue  # 尝试下一个格式
+            
+            self.logger.warning(f"所有格式都无法获取外汇 {pair} 数据，可能需要付费API计划")
+            return None
                 
         except Exception as e:
             self.logger.error(f"获取外汇 {pair} 汇率失败: {e}")

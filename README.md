@@ -52,7 +52,7 @@ cp example.config.yaml config.yaml
 
 ### 3. 配置文件设置
 
-编辑 `config.yaml` 文件，填入您的 API 密钥和数据库 ID：
+编辑 `config.yaml` 文件，填入您的 API 密钥和数据库 ID（数据库 ID 从 Notion 数据库页面的 URL 中获取）：
 
 ```yaml
 # Finnhub API 配置

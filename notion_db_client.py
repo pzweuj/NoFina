@@ -9,7 +9,6 @@ from notion_client import Client
 from datetime import datetime
 import yaml
 
-
 class NotionClient:
     """Notion数据库客户端"""
     
@@ -217,6 +216,54 @@ class NotionClient:
             self.logger.error(f"获取加密货币交易对失败: {e}")
             return []
     
+    def find_existing_page(self, database_id: str, identifier_property: str, identifier_value: str) -> Optional[str]:
+        """
+        查找数据库中是否存在指定标识符的页面
+        
+        Args:
+            database_id: 数据库ID
+            identifier_property: 标识符属性名
+            identifier_value: 标识符值
+            
+        Returns:
+            页面ID（如果存在），否则返回None
+        """
+        try:
+            filter_conditions = {
+                "property": identifier_property,
+                "title": {
+                    "equals": identifier_value
+                }
+            }
+            
+            pages = self.query_database(database_id, filter_conditions)
+            return pages[0]['id'] if pages else None
+            
+        except Exception as e:
+            self.logger.error(f"查找现有页面失败: {e}")
+            return None
+    
+    def update_page(self, page_id: str, properties: Dict[str, Any]) -> bool:
+        """
+        更新页面属性
+        
+        Args:
+            page_id: 页面ID
+            properties: 要更新的属性
+            
+        Returns:
+            是否更新成功
+        """
+        try:
+            self.client.pages.update(
+                page_id=page_id,
+                properties=properties
+            )
+            return True
+        except Exception as e:
+            self.logger.error(f"更新页面失败: {e}")
+            return False
+    
     def create_price_page(self, database_id: str, properties: Dict[str, Any]) -> bool:
         """
         在价格数据库中创建页面
@@ -238,6 +285,41 @@ class NotionClient:
             self.logger.error(f"创建价格页面失败: {e}")
             return False
     
+    def upsert_price_page(self, database_id: str, identifier_property: str, identifier_value: str, properties: Dict[str, Any]) -> bool:
+        """
+        更新或插入价格页面（如果存在则更新，否则创建新页面）
+        
+        Args:
+            database_id: 数据库ID
+            identifier_property: 标识符属性名
+            identifier_value: 标识符值
+            properties: 页面属性
+            
+        Returns:
+            是否操作成功
+        """
+        try:
+            # 查找现有页面
+            existing_page_id = self.find_existing_page(database_id, identifier_property, identifier_value)
+            
+            if existing_page_id:
+                # 更新现有页面（排除标识符属性，避免重复设置）
+                update_properties = {k: v for k, v in properties.items() if k != identifier_property}
+                success = self.update_page(existing_page_id, update_properties)
+                if success:
+                    self.logger.debug(f"已更新现有页面: {identifier_value}")
+                return success
+            else:
+                # 创建新页面
+                success = self.create_price_page(database_id, properties)
+                if success:
+                    self.logger.debug(f"已创建新页面: {identifier_value}")
+                return success
+                
+        except Exception as e:
+            self.logger.error(f"更新或插入价格页面失败: {e}")
+            return False
+    
     def push_stock_price(self, stock_data: Dict[str, Any]) -> bool:
         """
         推送股票价格数据到价格数据库
@@ -255,9 +337,10 @@ class NotionClient:
                 self.logger.error("未配置股票数据库ID")
                 return False
             
+            symbol = stock_data.get('symbol', '')
             properties = {
                 "Symbol": {
-                    "title": [{"text": {"content": stock_data.get('symbol', '')}}]
+                    "title": [{"text": {"content": symbol}}]
                 },
                 "Price": {
                     "number": stock_data.get('current_price', 0)
@@ -288,7 +371,7 @@ class NotionClient:
                 }
             }
             
-            return self.create_price_page(price_db_id, properties)
+            return self.upsert_price_page(price_db_id, "Symbol", symbol, properties)
             
         except Exception as e:
             self.logger.error(f"推送股票价格失败: {e}")
@@ -311,9 +394,10 @@ class NotionClient:
                 self.logger.error("未配置外汇数据库ID")
                 return False
             
+            pair = forex_data.get('pair', '')
             properties = {
                 "Pair": {
-                    "title": [{"text": {"content": forex_data.get('pair', '')}}]
+                    "title": [{"text": {"content": pair}}]
                 },
                 "Rate": {
                     "number": forex_data.get('rate', 0)
@@ -344,7 +428,7 @@ class NotionClient:
                 }
             }
             
-            return self.create_price_page(price_db_id, properties)
+            return self.upsert_price_page(price_db_id, "Pair", pair, properties)
             
         except Exception as e:
             self.logger.error(f"推送外汇价格失败: {e}")
@@ -367,9 +451,10 @@ class NotionClient:
                 self.logger.error("未配置加密货币数据库ID")
                 return False
             
+            symbol = crypto_data.get('symbol', '')
             properties = {
                 "Symbol": {
-                    "title": [{"text": {"content": crypto_data.get('symbol', '')}}]
+                    "title": [{"text": {"content": symbol}}]
                 },
                 "Exchange": {
                     "rich_text": [{"text": {"content": crypto_data.get('exchange', '')}}]
@@ -403,7 +488,7 @@ class NotionClient:
                 }
             }
             
-            return self.create_price_page(price_db_id, properties)
+            return self.upsert_price_page(price_db_id, "Symbol", symbol, properties)
             
         except Exception as e:
             self.logger.error(f"推送加密货币价格失败: {e}")
