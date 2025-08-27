@@ -160,10 +160,10 @@ python main.py
 crontab -e
 
 # 添加以下行 (每5分钟执行一次)
-*/5 * * * * python /path/to/NoFina/main.py >> /path/to/NoFina/log/nofina_cron.log 2>&1
+*/5 * * * * python /path/to/NoFina/main.py >> /path/to/NoFina/logs/nofina_cron.log 2>&1
 
-# 或者每小时执行一次
-0 * * * * python /path/to/NoFina/main.py >> /path/to/NoFina/log/nofina_cron.log 2>&1
+# 在东八区美股常规交易时间每5分钟执行一次
+*/5 0-5,21-23 * * 1-6 python /path/to/NoFina/main.py >> /path/to/NoFina/logs/nofina_cron.log 2>&1
 ```
 
 ### 调试模式
