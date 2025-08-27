@@ -1,0 +1,51 @@
+# NoFina 配置文件
+# Finnhub API 配置
+finnhub:
+  api_key: "YOUR_FINNHUB_API_KEY_HERE"  # 请替换为您的Finnhub API密钥
+  base_url: "https://finnhub.io/api/v1"
+
+# Notion API 配置
+notion:
+  api_key: "YOUR_NOTION_API_KEY_HERE"  # 请替换为您的Notion集成令牌
+  base_url: "https://api.notion.com/v1"
+  
+  # 数据库配置
+  databases:
+    # 股票数据库
+    stocks:
+      database_id: "YOUR_STOCKS_DATABASE_ID_HERE"  # 股票数据库ID
+      columns:
+        symbol: "Symbol"      # 股票代码列名
+        name: "Name"          # 股票名称列名
+        enabled: "Enabled"    # 是否启用列名
+        
+    # 外汇数据库
+    forex:
+      database_id: "YOUR_FOREX_DATABASE_ID_HERE"   # 外汇数据库ID
+      columns:
+        pair: "Pair"          # 货币对列名
+        name: "Name"          # 货币对名称列名
+        enabled: "Enabled"    # 是否启用列名
+        
+    # 加密货币数据库
+    crypto:
+      database_id: "YOUR_CRYPTO_DATABASE_ID_HERE"  # 加密货币数据库ID
+      columns:
+        symbol: "Symbol"      # 交易对列名
+        name: "Name"          # 币种名称列名
+        exchange: "Exchange"  # 交易所列名
+        enabled: "Enabled"    # 是否启用列名
+
+# 输出配置
+output:
+  format: "json"        # 输出格式: json, csv, txt
+  save_to_file: true    # 是否保存到文件
+  file_path: "./data/"  # 文件保存路径
+  timestamp: true       # 是否包含时间戳
+
+# 日志配置
+logging:
+  level: "INFO"         # 日志级别: DEBUG, INFO, WARNING, ERROR
+  file: "./logs/nofina.log"
+  max_size: "10MB"
+  backup_count: 5
