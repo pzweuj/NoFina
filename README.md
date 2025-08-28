@@ -46,7 +46,7 @@ cp example.config.yaml config.yaml
 3. 免费版本每分钟限制 60 次请求
 4. Finnhub 免费版本不支持外汇数据
 
-#### Open Exchange Rates API 密钥 (可选)
+#### Open Exchange Rates API 密钥
 1. 访问 [Open Exchange Rates](https://openexchangerates.org/)
 2. 注册账户并获取免费 API 密钥
 3. 免费版本每月限制 1,000 次请求
