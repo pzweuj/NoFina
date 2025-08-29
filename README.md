@@ -175,6 +175,13 @@ logging:
   level: "DEBUG"
 ```
 
+## Google Sheets
+如果用的是Google Sheets，可以在自己的表格中新增一个名为`Finnhub`的子表，子表包含的列与上述的**股票数据库**相同，需要确保填入关注的股票/加密货币代码，勾选Enabled复选框。
+
+然后在扩增程序 -> Apps 脚本 中设置使用 [finnhub_auto.gs](https://github.com/pzweuj/NoFina/blob/main/finnhub_auto.gs)。在编辑器中加入此脚本，然后在脚本设置中设置属性`FINNHUB_API_KEY`，填入自己的Finnhub API密钥。然后在脚本中，调用`setupTriggerBeiJing`即可实现在Finnhub表中自动更新信息（在交易时间每5分钟更新一次），比Google Sheets自带的函数更新频率更高。
+
+注意初次使用需要在弹出的警告框中进行授权。
+
 ## 许可证
 
 本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
