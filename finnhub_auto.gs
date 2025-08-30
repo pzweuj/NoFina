@@ -138,6 +138,7 @@ function fetchBatchStockData(symbols, enabledFlags, apiKey) {
 
 /**
  * 带缓存的获取报价数据
+ * BINANCE和OKEX符号使用较短的缓存时间
  */
 function getQuoteWithCache(symbol, apiKey) {
   var cache = CacheService.getScriptCache();
@@ -163,8 +164,15 @@ function getQuoteWithCache(symbol, apiKey) {
     throw 'API错误: ' + (jsonData.error || responseCode);
   }
   
-  // 缓存10分钟（600秒），避免频繁调用
-  cache.put(cacheKey, JSON.stringify(jsonData), 600);
+  // 根据交易所设置不同的缓存时间
+  var cacheTime;
+  if (symbol.startsWith('BINANCE:') || symbol.startsWith('OKEX:')) {
+    cacheTime = 300; // 5分钟缓存，适合加密货币的高频更新
+  } else {
+    cacheTime = 600; // 10分钟缓存，适合传统股票
+  }
+  
+  cache.put(cacheKey, JSON.stringify(jsonData), cacheTime);
   
   return jsonData;
 }
@@ -240,6 +248,7 @@ function setupTrigger() {
 
 /**
  * 设置一个在北京时间周一到周六的0点到5点，21点-24点期间，每5分钟执行一次的触发器
+ * BINANCE和OKEX符号不受时间限制，始终每5分钟更新
  */
 function setupTriggerBeiJing() {
   // 删除所有现有的本项目触发器（避免重复）
@@ -254,10 +263,16 @@ function setupTriggerBeiJing() {
     .everyHours(1) // 每小时检查一次，确保及时启用/禁用
     .create();
     
+  // 创建加密货币专用触发器，始终每5分钟运行
+  ScriptApp.newTrigger('updateCryptoData')
+    .timeBased()
+    .everyMinutes(5)
+    .create();
+    
   // 立即运行一次日程管理，设置初始状态
   manageIntradaySchedule();
   
-  SpreadsheetApp.getUi().alert('定时器设置成功', '已设置为在北京时间周一到周六的0-5点、21-24点期间每5分钟运行。管理器每小时检查一次。', SpreadsheetApp.getUi().ButtonSet.OK);
+  SpreadsheetApp.getUi().alert('定时器设置成功', '已设置为在北京时间周一到周六的0-5点、21-24点期间每5分钟运行传统股票数据。BINANCE和OKEX符号将始终每5分钟更新。管理器每小时检查一次。', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 /**
@@ -306,6 +321,70 @@ function manageIntradaySchedule() {
     // 不在交易时间内且有触发器，删除触发器
     ScriptApp.deleteTrigger(fiveMinTrigger);
     Logger.log('触发器已禁用 - 北京时间: ' + beijingTime.toLocaleString());
+  }
+}
+
+/**
+ * 专门更新加密货币数据（BINANCE和OKEX符号）
+ * 此函数不受时间限制，始终每5分钟运行
+ */
+function updateCryptoData() {
+  try {
+    // 获取工作表
+    var sheet = getStockDataSheet();
+    
+    // 获取API Key
+    var apiKey = getApiKey();
+    if (!apiKey) {
+      Logger.log('警告: 未设置FINNHUB_API_KEY，跳过加密货币数据更新');
+      return;
+    }
+    
+    // 获取数据范围
+    var dataRange = getDataRange(sheet);
+    var symbols = dataRange.symbols;
+    var enabledFlags = dataRange.enabledFlags;
+    
+    // 筛选出BINANCE和OKEX符号
+    var cryptoIndices = [];
+    var cryptoSymbols = [];
+    var cryptoEnabledFlags = [];
+    
+    for (var i = 0; i < symbols.length; i++) {
+      var symbol = symbols[i][0];
+      var enabled = enabledFlags[i][0];
+      
+      if (symbol && enabled && (symbol.startsWith('BINANCE:') || symbol.startsWith('OKEX:'))) {
+        cryptoIndices.push(i);
+        cryptoSymbols.push([symbol]);
+        cryptoEnabledFlags.push([enabled]);
+      }
+    }
+    
+    if (cryptoSymbols.length === 0) {
+      Logger.log('没有找到启用的BINANCE或OKEX符号');
+      return;
+    }
+    
+    // 批量获取加密货币数据
+    var cryptoData = fetchBatchStockData(cryptoSymbols, cryptoEnabledFlags, apiKey);
+    
+    // 更新对应的行
+    for (var j = 0; j < cryptoIndices.length; j++) {
+      var rowIndex = cryptoIndices[j];
+      var rowRange = sheet.getRange(rowIndex + 2, 2, 1, 7); // +2因为数据从第2行开始，且数组索引从0开始
+      rowRange.setValues([cryptoData.data[j]]);
+      
+      // 更新时间戳
+      var now = new Date();
+      sheet.getRange(rowIndex + 2, 10).setValue(now.getTime()); // J列：时间戳
+      sheet.getRange(rowIndex + 2, 11).setValue(now.toLocaleString()); // K列：日期时间
+    }
+    
+    Logger.log('加密货币数据更新完成，更新了 ' + cryptoData.updatedCount + ' 个符号');
+    
+  } catch (error) {
+    Logger.log('加密货币数据更新错误: ' + error);
   }
 }
 
