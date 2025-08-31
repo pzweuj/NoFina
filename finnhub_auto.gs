@@ -28,8 +28,8 @@ function updateStockData() {
     // 更新工作表
     updateSheetWithData(sheet, updateRange, stockData);
     
-    // 添加时间戳
-    addTimestamp(sheet, dataRange.timestampRange, dataRange.datetimeRange);
+    // 添加时间戳（只更新启用的symbol）
+    addTimestamp(sheet, dataRange.timestampRange, dataRange.datetimeRange, stockData);
     
     // 提示完成
     showSuccessMessage(stockData.updatedCount);
@@ -97,6 +97,7 @@ function getDataRange(sheet) {
  */
 function fetchBatchStockData(symbols, enabledFlags, apiKey) {
   var stockData = [];
+  var updatedIndices = [];
   var updatedCount = 0;
   
   for (var i = 0; i < symbols.length; i++) {
@@ -104,8 +105,8 @@ function fetchBatchStockData(symbols, enabledFlags, apiKey) {
     var enabled = enabledFlags[i][0];
     
     if (!symbol || !enabled) {
-      // 如果股票代码为空或未启用，添加空数据
-      stockData.push(['', '', '', '', '', '', '']);
+      // 如果股票代码为空或未启用，跳过但不添加数据
+      stockData.push(null); // 使用null标记跳过的行
       continue;
     }
     
@@ -122,16 +123,19 @@ function fetchBatchStockData(symbols, enabledFlags, apiKey) {
         quote.pc || ''  // Previous Close
       ]);
       
+      updatedIndices.push(i);
       updatedCount++;
       
     } catch (error) {
       Logger.log('获取股票数据失败: ' + symbol + ' - ' + error);
       stockData.push(['Error', error.toString(), '', '', '', '', '']);
+      updatedIndices.push(i);
     }
   }
   
   return {
     data: stockData,
+    updatedIndices: updatedIndices,
     updatedCount: updatedCount
   };
 }
@@ -178,27 +182,44 @@ function getQuoteWithCache(symbol, apiKey) {
 }
 
 /**
- * 更新工作表数据
+ * 更新工作表数据（只更新启用的行）
  */
 function updateSheetWithData(sheet, range, stockData) {
-  range.setValues(stockData.data);
+  for (var i = 0; i < stockData.data.length; i++) {
+    if (stockData.data[i] !== null) {
+      // 只更新非null的行（即启用的symbol）
+      var rowRange = sheet.getRange(i + 2, 2, 1, 7); // +2因为数据从第2行开始
+      rowRange.setValues([stockData.data[i]]);
+    }
+  }
 }
 
 /**
- * 添加时间戳（使用北京时间）
+ * 添加时间戳（使用北京时间，只更新启用的symbol）
  */
-function addTimestamp(sheet, timestampRange, datetimeRange) {
+function addTimestamp(sheet, timestampRange, datetimeRange, stockData) {
   var beijingTime = getBeijingTime();
-  var timestamps = [];
-  var datetimes = [];
   
-  for (var i = 0; i < timestampRange.getNumRows(); i++) {
-    timestamps.push([beijingTime.getTime()]);
-    datetimes.push([formatBeijingTime(beijingTime)]);
+  // 如果有stockData参数，只更新启用的行
+  if (stockData && stockData.updatedIndices) {
+    for (var i = 0; i < stockData.updatedIndices.length; i++) {
+      var rowIndex = stockData.updatedIndices[i];
+      sheet.getRange(rowIndex + 2, 10).setValue(beijingTime.getTime()); // J列：时间戳
+      sheet.getRange(rowIndex + 2, 11).setValue(formatBeijingTime(beijingTime)); // K列：日期时间
+    }
+  } else {
+    // 兼容旧版本调用，更新所有行
+    var timestamps = [];
+    var datetimes = [];
+    
+    for (var i = 0; i < timestampRange.getNumRows(); i++) {
+      timestamps.push([beijingTime.getTime()]);
+      datetimes.push([formatBeijingTime(beijingTime)]);
+    }
+    
+    timestampRange.setValues(timestamps);
+    datetimeRange.setValues(datetimes);
   }
-  
-  timestampRange.setValues(timestamps);
-  datetimeRange.setValues(datetimes);
 }
 
 /**
@@ -293,8 +314,7 @@ function manageIntradaySchedule() {
   }
   
   // 获取北京时间 (UTC+8)
-  var now = new Date();
-  var beijingTime = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (8 * 3600000));
+  var beijingTime = getBeijingTime();
   var beijingHour = beijingTime.getHours();
   var beijingDay = beijingTime.getDay(); // 0 = 周日, 1 = 周一, ..., 6 = 周六
   
@@ -303,7 +323,7 @@ function manageIntradaySchedule() {
                        ((beijingHour >= 0 && beijingHour < 5) || // 0-5点
                         (beijingHour >= 21 && beijingHour < 24)); // 21-24点
   
-  Logger.log('当前北京时间: ' + beijingTime.toLocaleString() + 
+  Logger.log('当前北京时间: ' + formatBeijingTime(beijingTime) + 
              ', 小时: ' + beijingHour + 
              ', 星期' + beijingDay + 
              ', 是否交易时间: ' + isTradingHours +
@@ -316,11 +336,11 @@ function manageIntradaySchedule() {
       .timeBased()
       .everyMinutes(5)
       .create();
-    Logger.log('触发器已启用 - 北京时间: ' + beijingTime.toLocaleString());
+    Logger.log('触发器已启用 - 北京时间: ' + formatBeijingTime(beijingTime));
   } else if (!isTradingHours && fiveMinTrigger) {
     // 不在交易时间内且有触发器，删除触发器
     ScriptApp.deleteTrigger(fiveMinTrigger);
-    Logger.log('触发器已禁用 - 北京时间: ' + beijingTime.toLocaleString());
+    Logger.log('触发器已禁用 - 北京时间: ' + formatBeijingTime(beijingTime));
   }
 }
 
