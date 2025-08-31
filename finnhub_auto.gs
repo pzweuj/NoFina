@@ -185,16 +185,16 @@ function updateSheetWithData(sheet, range, stockData) {
 }
 
 /**
- * 添加时间戳
+ * 添加时间戳（使用北京时间）
  */
 function addTimestamp(sheet, timestampRange, datetimeRange) {
-  var now = new Date();
+  var beijingTime = getBeijingTime();
   var timestamps = [];
   var datetimes = [];
   
   for (var i = 0; i < timestampRange.getNumRows(); i++) {
-    timestamps.push([now.getTime()]);
-    datetimes.push([now.toLocaleString()]);
+    timestamps.push([beijingTime.getTime()]);
+    datetimes.push([formatBeijingTime(beijingTime)]);
   }
   
   timestampRange.setValues(timestamps);
@@ -375,10 +375,10 @@ function updateCryptoData() {
       var rowRange = sheet.getRange(rowIndex + 2, 2, 1, 7); // +2因为数据从第2行开始，且数组索引从0开始
       rowRange.setValues([cryptoData.data[j]]);
       
-      // 更新时间戳
-      var now = new Date();
-      sheet.getRange(rowIndex + 2, 10).setValue(now.getTime()); // J列：时间戳
-      sheet.getRange(rowIndex + 2, 11).setValue(now.toLocaleString()); // K列：日期时间
+      // 更新时间戳（使用北京时间）
+      var beijingTime = getBeijingTime();
+      sheet.getRange(rowIndex + 2, 10).setValue(beijingTime.getTime()); // J列：时间戳
+      sheet.getRange(rowIndex + 2, 11).setValue(formatBeijingTime(beijingTime)); // K列：日期时间
     }
     
     Logger.log('加密货币数据更新完成，更新了 ' + cryptoData.updatedCount + ' 个符号');
@@ -389,20 +389,42 @@ function updateCryptoData() {
 }
 
 /**
+ * 获取北京时间
+ */
+function getBeijingTime() {
+  var now = new Date();
+  return new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (8 * 3600000));
+}
+
+/**
+ * 格式化北京时间为24小时制字符串
+ */
+function formatBeijingTime(beijingTime) {
+  var year = beijingTime.getFullYear();
+  var month = (beijingTime.getMonth() + 1).toString().padStart(2, '0');
+  var day = beijingTime.getDate().toString().padStart(2, '0');
+  var hours = beijingTime.getHours().toString().padStart(2, '0');
+  var minutes = beijingTime.getMinutes().toString().padStart(2, '0');
+  var seconds = beijingTime.getSeconds().toString().padStart(2, '0');
+  
+  return year + '/' + month + '/' + day + ', ' + hours + ':' + minutes + ':' + seconds;
+}
+
+/**
  * 测试时区转换是否正确
  */
 function testBeijingTime() {
   var now = new Date();
-  var beijingTime = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (8 * 3600000));
+  var beijingTime = getBeijingTime();
   
   Logger.log('服务器时间: ' + now.toLocaleString());
-  Logger.log('计算的北京时间: ' + beijingTime.toLocaleString());
+  Logger.log('计算的北京时间: ' + formatBeijingTime(beijingTime));
   Logger.log('北京小时: ' + beijingTime.getHours());
   Logger.log('北京星期: ' + beijingTime.getDay() + ' (0=周日, 1=周一...6=周六)');
   
   // 显示给用户
   var message = '服务器时间: ' + now.toLocaleString() + '\n' +
-                '计算的北京时间: ' + beijingTime.toLocaleString() + '\n' +
+                '计算的北京时间: ' + formatBeijingTime(beijingTime) + '\n' +
                 '北京小时: ' + beijingTime.getHours() + '\n' +
                 '北京星期: ' + beijingTime.getDay() + ' (0=周日, 1=周一...6=周六)';
   
