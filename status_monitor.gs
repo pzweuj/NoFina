@@ -28,7 +28,12 @@ const DECISION_COLUMN = 6; // 简要决策列 (F列)
  */
 function monitorStatusChanges() {
   try {
-    Logger.log('开始监控状态变化...');
+    const beijingTime = getBeijingTime();
+    const timeString = formatBeijingTime(beijingTime);
+    Logger.log(`开始监控状态变化... 检测时间: ${timeString}`);
+    
+    // 更新最后检测时间
+    updateLastCheckTime(timeString);
     
     let totalChanges = 0;
     const allChanges = [];
@@ -46,7 +51,7 @@ function monitorStatusChanges() {
         }
         
         // 获取当前数据
-        const currentData = getCurrentData(sheet);
+        const currentData = getCurrentData(sheet, sheetConfig.name);
         
         // 获取上次保存的数据
         const previousData = getPreviousData(sheetConfig.propertyKey);
@@ -60,7 +65,7 @@ function monitorStatusChanges() {
           totalChanges += changes.length;
         }
         
-        // 保存当前数据作为下次比较的基准
+        // 保存当前数据作为下次比较的基准（在检测变化后立即保存）
         savePreviousData(sheetConfig.propertyKey, currentData);
         
         Logger.log(`${sheetConfig.displayName}监控完成，检测到 ${changes.length} 个变化`);
@@ -75,7 +80,7 @@ function monitorStatusChanges() {
       handleChanges(allChanges);
     }
     
-    Logger.log(`总监控完成，检测到 ${totalChanges} 个变化`);
+    Logger.log(`总监控完成，检测到 ${totalChanges} 个变化，检测时间: ${timeString}`);
     
   } catch (error) {
     Logger.log('监控过程中发生错误: ' + error.toString());
@@ -94,7 +99,7 @@ function getSheet(sheetName) {
 /**
  * 获取当前数据
  */
-function getCurrentData(sheet) {
+function getCurrentData(sheet, sheetName) {
   const lastRow = sheet.getLastRow();
   
   if (lastRow <= HEADER_ROW) {
@@ -107,6 +112,7 @@ function getCurrentData(sheet) {
   const values = dataRange.getValues();
   
   const data = [];
+  const seenCodes = new Set(); // 用于检测重复代码
   
   for (let i = 0; i < values.length; i++) {
     const row = values[i];
@@ -116,11 +122,21 @@ function getCurrentData(sheet) {
     
     // 只处理有代码的行
     if (code && code.toString().trim() !== '') {
+      const trimmedCode = code.toString().trim();
+      const uniqueKey = `${sheetName}_${trimmedCode}`; // 使用工作表名+代码作为唯一键
+      
+      // 检查是否有重复代码
+      if (seenCodes.has(trimmedCode)) {
+        Logger.log(`警告: 在 ${sheetName} 中发现重复代码 ${trimmedCode}，行号 ${HEADER_ROW + 1 + i}`);
+      }
+      seenCodes.add(trimmedCode);
+      
       data.push({
         rowIndex: HEADER_ROW + 1 + i, // 实际行号
-        code: code.toString().trim(),
+        code: trimmedCode,
         name: name ? name.toString().trim() : '',
-        decision: decision ? decision.toString().trim() : ''
+        decision: decision ? decision.toString().trim() : '',
+        uniqueKey: uniqueKey // 添加唯一键
       });
     }
   }
@@ -159,20 +175,35 @@ function savePreviousData(propertyKey, currentData) {
 }
 
 /**
+ * 更新最后检测时间
+ */
+function updateLastCheckTime(timeString) {
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    properties.setProperty('LAST_CHECK_TIME', timeString);
+    Logger.log(`更新最后检测时间: ${timeString}`);
+  } catch (error) {
+    Logger.log(`更新检测时间时出错: ${error.toString()}`);
+  }
+}
+
+/**
  * 检测变化
  */
 function detectChanges(previousData, currentData, sheetConfig) {
   const changes = [];
   
-  // 创建上次数据的映射，以代码为键
+  // 创建上次数据的映射，以唯一键为键（如果没有uniqueKey则使用code）
   const previousMap = {};
   previousData.forEach(item => {
-    previousMap[item.code] = item;
+    const key = item.uniqueKey || item.code;
+    previousMap[key] = item;
   });
   
   // 检查当前数据中的每一项
   currentData.forEach(currentItem => {
-    const previousItem = previousMap[currentItem.code];
+    const key = currentItem.uniqueKey || currentItem.code;
+    const previousItem = previousMap[key];
     
     if (previousItem) {
       // 如果简要决策发生了变化
@@ -184,7 +215,8 @@ function detectChanges(previousData, currentData, sheetConfig) {
           name: currentItem.name,
           previousDecision: previousItem.decision,
           currentDecision: currentItem.decision,
-          rowIndex: currentItem.rowIndex
+          rowIndex: currentItem.rowIndex,
+          uniqueKey: currentItem.uniqueKey
         });
       }
     } else {
@@ -198,6 +230,7 @@ function detectChanges(previousData, currentData, sheetConfig) {
           previousDecision: '',
           currentDecision: currentItem.decision,
           rowIndex: currentItem.rowIndex,
+          uniqueKey: currentItem.uniqueKey,
           isNew: true
         });
       }
@@ -492,11 +525,11 @@ function setupDailyHealthCheckTrigger() {
     });
     
     // 创建每日9:30PM触发器（北京时间）
-    // Google Apps Script使用UTC时间，北京时间9:30PM = UTC 1:30PM
+    // Google Apps Script使用UTC时间，北京时间9:30PM = UTC 1:30PM (13:30)
     ScriptApp.newTrigger('sendDailyHealthCheck')
       .timeBased()
       .everyDays(1)
-      .atHour(13) // UTC 13:00 = 北京时间 21:00
+      .atHour(13) // UTC 13:30 = 北京时间 21:30
       .nearMinute(30) // 30分钟
       .create();
     
@@ -785,6 +818,19 @@ function onOpen() {
 }
 
 /**
+ * 获取最后检测时间
+ */
+function getLastCheckTime() {
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    return properties.getProperty('LAST_CHECK_TIME') || '未知';
+  } catch (error) {
+    Logger.log(`获取最后检测时间时出错: ${error.toString()}`);
+    return '获取失败';
+  }
+}
+
+/**
  * 显示监控状态
  */
 function showMonitoringStatus() {
@@ -793,8 +839,12 @@ function showMonitoringStatus() {
     const monitoringTriggers = triggers.filter(trigger => 
       trigger.getHandlerFunction() === 'monitorStatusChanges'
     );
+    const healthCheckTriggers = triggers.filter(trigger => 
+      trigger.getHandlerFunction() === 'sendDailyHealthCheck'
+    );
     
     const properties = PropertiesService.getScriptProperties();
+    const lastCheckTime = getLastCheckTime();
     
     let status = '📊 状态监控状态\n\n';
     
@@ -802,8 +852,15 @@ function showMonitoringStatus() {
       status += '✅ 监控状态: 运行中\n';
       status += `📅 触发器数量: ${monitoringTriggers.length}\n`;
       status += '⏰ 监控频率: 每5分钟\n';
+      status += `🕐 最后检测时间: ${lastCheckTime}\n`;
     } else {
       status += '⏹️ 监控状态: 已停止\n';
+    }
+    
+    if (healthCheckTriggers.length > 0) {
+      status += '✅ 每日健康检查: 运行中 (每天21:30)\n';
+    } else {
+      status += '⏹️ 每日健康检查: 已停止\n';
     }
     
     status += '\n📋 监控工作表:\n';
