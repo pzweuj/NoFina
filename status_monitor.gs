@@ -50,23 +50,27 @@ function monitorStatusChanges() {
           continue;
         }
         
-        // 获取当前数据
-        const currentData = getCurrentData(sheet, sheetConfig.name);
+        // 1. 获取当前简要策略作为"新决策"
+        const newDecisions = getCurrentData(sheet, sheetConfig.name);
+        Logger.log(`获取到 ${newDecisions.length} 条新决策数据`);
         
-        // 获取上次保存的数据
-        const previousData = getPreviousData(sheetConfig.propertyKey);
+        // 2. 获取上次保存的"原决策"
+        const originalDecisions = getPreviousData(sheetConfig.propertyKey);
+        Logger.log(`获取到 ${originalDecisions.length} 条原决策数据`);
         
-        // 比较数据并检测变化
-        const changes = detectChanges(previousData, currentData, sheetConfig);
+        // 3. 对比新决策和原决策，检测差异
+        const changes = detectChanges(originalDecisions, newDecisions, sheetConfig);
+        Logger.log(`检测到 ${changes.length} 个决策变化`);
         
-        // 如果有变化，收集变化信息
+        // 4. 如果有差异，收集变化信息用于推送
         if (changes.length > 0) {
           allChanges.push(...changes);
           totalChanges += changes.length;
         }
         
-        // 保存当前数据作为下次比较的基准（在检测变化后立即保存）
-        savePreviousData(sheetConfig.propertyKey, currentData);
+        // 5. 将新决策替换为原决策，等待下一个5分钟执行
+        saveOriginalDecisions(sheetConfig.propertyKey, newDecisions);
+        Logger.log(`已将新决策保存为原决策，等待下次检测`);
         
         Logger.log(`${sheetConfig.displayName}监控完成，检测到 ${changes.length} 个变化`);
         
@@ -75,9 +79,10 @@ function monitorStatusChanges() {
       }
     }
     
-    // 如果有变化，统一处理并通知
+    // 6. 如果有差异，统一处理并推送通知
     if (allChanges.length > 0) {
       handleChanges(allChanges);
+      Logger.log(`已推送 ${totalChanges} 个决策变化通知`);
     }
     
     Logger.log(`总监控完成，检测到 ${totalChanges} 个变化，检测时间: ${timeString}`);
@@ -152,8 +157,14 @@ function getPreviousData(propertyKey) {
     const properties = PropertiesService.getScriptProperties();
     const previousDataJson = properties.getProperty(propertyKey);
     
+    Logger.log(`尝试获取原决策数据，propertyKey: ${propertyKey}`);
+    
     if (previousDataJson) {
-      return JSON.parse(previousDataJson);
+      const data = JSON.parse(previousDataJson);
+      Logger.log(`成功获取到 ${data.length} 条原决策数据`);
+      return data;
+    } else {
+      Logger.log(`未找到原决策数据 (${propertyKey})，返回空数组`);
     }
   } catch (error) {
     Logger.log(`获取上次数据时出错 (${propertyKey}): ${error.toString()}`);
@@ -163,14 +174,15 @@ function getPreviousData(propertyKey) {
 }
 
 /**
- * 保存当前数据
+ * 保存原决策数据
  */
-function savePreviousData(propertyKey, currentData) {
+function saveOriginalDecisions(propertyKey, newDecisions) {
   try {
     const properties = PropertiesService.getScriptProperties();
-    properties.setProperty(propertyKey, JSON.stringify(currentData));
+    properties.setProperty(propertyKey, JSON.stringify(newDecisions));
+    Logger.log(`已保存 ${newDecisions.length} 条原决策数据 (${propertyKey})`);
   } catch (error) {
-    Logger.log(`保存数据时出错 (${propertyKey}): ${error.toString()}`);
+    Logger.log(`保存原决策数据时出错 (${propertyKey}): ${error.toString()}`);
   }
 }
 
@@ -525,7 +537,8 @@ function setupDailyHealthCheckTrigger() {
     });
     
     // 创建每日9:30PM触发器（北京时间）
-    // Google Apps Script使用UTC时间，北京时间9:30PM = UTC 1:30PM (13:30)
+    // Google Apps Script使用UTC时间，北京时间21:30 = UTC 13:30
+    // 但是要注意：北京时间比UTC快8小时，所以北京时间21:30 = UTC 13:30
     ScriptApp.newTrigger('sendDailyHealthCheck')
       .timeBased()
       .everyDays(1)
@@ -618,6 +631,207 @@ function checkChangesOnce() {
 }
 
 /**
+ * 重新设置每日健康检查触发器（修复时区问题）
+ */
+function fixDailyHealthCheckTrigger() {
+  try {
+    Logger.log('开始修复每日健康检查触发器...');
+    
+    // 删除现有的健康检查触发器
+    const triggers = ScriptApp.getProjectTriggers();
+    let deletedCount = 0;
+    triggers.forEach(trigger => {
+      if (trigger.getHandlerFunction() === 'sendDailyHealthCheck') {
+        ScriptApp.deleteTrigger(trigger);
+        deletedCount++;
+        Logger.log('删除了旧的健康检查触发器');
+      }
+    });
+    
+    // 重新创建正确的触发器
+    // 北京时间21:30 = UTC 13:30
+    ScriptApp.newTrigger('sendDailyHealthCheck')
+      .timeBased()
+      .everyDays(1)
+      .atHour(13) // UTC 13:30
+      .nearMinute(30)
+      .create();
+    
+    Logger.log('已创建新的健康检查触发器 (UTC 13:30 = 北京时间 21:30)');
+    
+    const message = `✅ 每日健康检查触发器已修复！\n\n` +
+                   `删除了 ${deletedCount} 个旧触发器\n` +
+                   `新触发器时间: 每天UTC 13:30 (北京时间21:30)\n\n` +
+                   `现在应该不会在错误的时间触发了。`;
+    
+    SpreadsheetApp.getUi().alert('触发器修复完成', message, SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    const errorMessage = '❌ 修复触发器时出错:\n\n' + error.toString();
+    SpreadsheetApp.getUi().alert('修复失败', errorMessage, SpreadsheetApp.getUi().ButtonSet.OK);
+    Logger.log('修复触发器错误: ' + error.toString());
+  }
+}
+
+/**
+ * 检查所有触发器状态
+ */
+function checkAllTriggers() {
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    
+    Logger.log('=== 检查所有触发器 ===');
+    Logger.log(`总触发器数量: ${triggers.length}`);
+    
+    if (triggers.length === 0) {
+      Logger.log('没有找到任何触发器');
+      SpreadsheetApp.getUi().alert('触发器检查', '没有找到任何触发器', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    let triggerInfo = '触发器列表:\n\n';
+    
+    triggers.forEach((trigger, index) => {
+      const handlerFunction = trigger.getHandlerFunction();
+      const triggerSource = trigger.getTriggerSource();
+      const eventType = trigger.getEventType();
+      
+      Logger.log(`触发器 ${index + 1}:`);
+      Logger.log(`  - 函数: ${handlerFunction}`);
+      Logger.log(`  - 来源: ${triggerSource}`);
+      Logger.log(`  - 事件类型: ${eventType}`);
+      
+      triggerInfo += `${index + 1}. ${handlerFunction}\n`;
+      triggerInfo += `   来源: ${triggerSource}\n`;
+      triggerInfo += `   类型: ${eventType}\n`;
+      
+      // 如果是时间触发器，显示更多详情
+      if (triggerSource.toString() === 'CLOCK') {
+        try {
+          // 注意：某些触发器属性可能无法直接访问
+          triggerInfo += `   (时间触发器)\n`;
+        } catch (e) {
+          Logger.log(`  - 无法获取时间触发器详情: ${e.toString()}`);
+        }
+      }
+      
+      triggerInfo += '\n';
+    });
+    
+    SpreadsheetApp.getUi().alert('触发器检查完成', triggerInfo, SpreadsheetApp.getUi().ButtonSet.OK);
+    Logger.log('触发器检查完成');
+    
+  } catch (error) {
+    Logger.log('检查触发器时出错: ' + error.toString());
+    SpreadsheetApp.getUi().alert('检查失败', error.toString(), SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
+ * 调试脚本属性功能
+ */
+function debugScriptProperties() {
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const testKey = 'DEBUG_TEST_KEY';
+    const testValue = 'DEBUG_TEST_VALUE_' + new Date().getTime();
+    
+    Logger.log('=== 调试脚本属性功能 ===');
+    
+    // 测试保存
+    Logger.log(`尝试保存测试数据: ${testKey} = ${testValue}`);
+    properties.setProperty(testKey, testValue);
+    Logger.log('保存完成');
+    
+    // 测试读取
+    Logger.log('尝试读取测试数据...');
+    const retrievedValue = properties.getProperty(testKey);
+    Logger.log(`读取到的值: ${retrievedValue}`);
+    
+    if (retrievedValue === testValue) {
+      Logger.log('✅ 脚本属性功能正常');
+    } else {
+      Logger.log('❌ 脚本属性功能异常');
+    }
+    
+    // 检查现有的监控数据
+    Logger.log('\n=== 检查现有监控数据 ===');
+    MONITORED_SHEETS.forEach(sheetConfig => {
+      const data = properties.getProperty(sheetConfig.propertyKey);
+      Logger.log(`${sheetConfig.propertyKey}: ${data ? '有数据' : '无数据'}`);
+      if (data) {
+        try {
+          const parsedData = JSON.parse(data);
+          Logger.log(`  - 数据条数: ${parsedData.length}`);
+        } catch (e) {
+          Logger.log(`  - 数据解析错误: ${e.toString()}`);
+        }
+      }
+    });
+    
+    // 检查最后检测时间
+    const lastCheckTime = properties.getProperty('LAST_CHECK_TIME');
+    Logger.log(`最后检测时间: ${lastCheckTime || '未设置'}`);
+    
+    // 清理测试数据
+    properties.deleteProperty(testKey);
+    Logger.log('测试数据已清理');
+    
+    SpreadsheetApp.getUi().alert('调试完成', '请查看执行记录了解详情', SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    Logger.log('调试过程中出错: ' + error.toString());
+    SpreadsheetApp.getUi().alert('调试失败', error.toString(), SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
+ * 初始化监控基准数据（不发送通知）
+ */
+function initializeMonitoringBaseline() {
+  try {
+    Logger.log('开始初始化监控基准数据...');
+    
+    let totalInitialized = 0;
+    
+    // 遍历所有需要监控的工作表
+    for (const sheetConfig of MONITORED_SHEETS) {
+      try {
+        Logger.log(`初始化 ${sheetConfig.displayName} (${sheetConfig.name})...`);
+        
+        // 获取工作表
+        const sheet = getSheet(sheetConfig.name);
+        if (!sheet) {
+          Logger.log(`警告: 找不到工作表 ${sheetConfig.name}，跳过初始化`);
+          continue;
+        }
+        
+        // 获取当前数据作为基准
+        const currentData = getCurrentData(sheet, sheetConfig.name);
+        
+        // 保存为原决策基准
+        saveOriginalDecisions(sheetConfig.propertyKey, currentData);
+        
+        totalInitialized += currentData.length;
+        Logger.log(`${sheetConfig.displayName}基准初始化完成，保存了 ${currentData.length} 条数据`);
+        
+      } catch (error) {
+        Logger.log(`初始化 ${sheetConfig.name} 时出错: ${error.toString()}`);
+      }
+    }
+    
+    const message = `✅ 监控基准初始化完成！\n\n共初始化了 ${totalInitialized} 条基准数据\n\n现在可以正常进行监控了。`;
+    SpreadsheetApp.getUi().alert('初始化完成', message, SpreadsheetApp.getUi().ButtonSet.OK);
+    Logger.log(`监控基准初始化完成，总共初始化了 ${totalInitialized} 条数据`);
+    
+  } catch (error) {
+    const errorMessage = '❌ 初始化基准数据时出错:\n\n' + error.toString();
+    SpreadsheetApp.getUi().alert('初始化失败', errorMessage, SpreadsheetApp.getUi().ButtonSet.OK);
+    Logger.log('初始化基准数据错误: ' + error.toString());
+  }
+}
+
+/**
  * 清除历史数据（重置监控基准）
  */
 function resetMonitoringData() {
@@ -631,7 +845,7 @@ function resetMonitoringData() {
     
     const sheetNames = MONITORED_SHEETS.map(sheet => sheet.displayName).join('、');
     SpreadsheetApp.getUi().alert('✅ 重置完成', 
-      `${sheetNames}的监控基准数据已清除，下次运行将重新建立基准`, 
+      `${sheetNames}的监控基准数据已清除，请运行"初始化监控基准"重新建立基准`, 
       SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (error) {
     const errorMessage = '❌ 重置时出错:\n\n' + error.toString();
@@ -804,9 +1018,13 @@ function onOpen() {
     .addItem('🚀 开始监控 (每5分钟)', 'setupMonitoringTrigger')
     .addItem('⏹️ 停止监控', 'stopMonitoring')
     .addSeparator()
+    .addItem('🔧 初始化监控基准', 'initializeMonitoringBaseline')
     .addItem('🔍 手动检查一次', 'checkChangesOnce')
     .addItem('🔄 重置监控数据', 'resetMonitoringData')
     .addSeparator()
+    .addItem('🐛 调试脚本属性', 'debugScriptProperties')
+    .addItem('🔍 检查所有触发器', 'checkAllTriggers')
+    .addItem('🔧 修复健康检查触发器', 'fixDailyHealthCheckTrigger')
     .addItem('📋 查看监控状态', 'showMonitoringStatus')
     .addSeparator()
     .addItem('💬 配置企业微信通知', 'configureWeChatWebhook')
