@@ -328,18 +328,34 @@ function recordChangesToSheet(changes, timeString) {
     
     // 添加变化记录
     const lastRow = logSheet.getLastRow();
-    const newData = changes.map(change => [
-      timeString,
-      change.sheetDisplayName,
-      change.code,
-      change.name,
-      change.previousDecision,
-      change.currentDecision,
-      change.rowIndex
-    ]);
+    const newData = changes.map(change => {
+      // 确保所有字段都有值，避免 undefined 或 null
+      const timeValue = timeString || '';
+      const typeValue = change.sheetDisplayName || '';
+      const codeValue = change.code || '';
+      const nameValue = change.name || '';
+      const previousDecisionValue = change.previousDecision || '';
+      const currentDecisionValue = change.currentDecision || '';
+      const rowIndexValue = change.rowIndex || '';
+      
+      // 记录调试信息
+      Logger.log(`记录变化数据: 时间=${timeValue}, 类型=${typeValue}, 代码=${codeValue}, 名称=${nameValue}, 原决策=${previousDecisionValue}, 新决策=${currentDecisionValue}, 行号=${rowIndexValue}`);
+      
+      return [
+        timeValue,
+        typeValue,
+        codeValue,
+        nameValue,
+        previousDecisionValue,
+        currentDecisionValue,
+        rowIndexValue
+      ];
+    });
     
     if (newData.length > 0) {
+      Logger.log(`准备写入 ${newData.length} 行数据到状态变化记录表`);
       logSheet.getRange(lastRow + 1, 1, newData.length, 7).setValues(newData);
+      Logger.log('数据写入完成');
     }
     
   } catch (error) {
